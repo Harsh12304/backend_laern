@@ -1,11 +1,18 @@
 import dotenv from "dotenv";
 import connectDB from "./db/index.js";
+import { app } from "./app.js";
 
 dotenv.config({
     path : './.env'
 })
 
 connectDB()
+.then(() => {
+    app.listen(process.env.PORT)
+})
+.catch((err) => {
+    console.log(`the database connection failed !! `, err )
+})
 
 
 
@@ -16,7 +23,7 @@ connectDB()
 // (async () => {
 //     try {
 //        await mongoose.connect(`${process.env.MONGO_DB}/${DB_NAME}`)
-//        app.on("errror", (error) => {
+//        app.on("error", (error) => {
 //         console.log("Error", error);
 //         throw error
 //        })
