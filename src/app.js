@@ -25,5 +25,12 @@ app.use(express.static("public"));
 // Parse cookies from the request headers
 app.use(cookieParser());
 
+// Importing routes from different modules
+import userRouter from "./routes/user.routes.js"
+
+//routes declarartion
+app.use("/api/v1/users", userRouter)
+//http://localhost:5000/api/v1/users/register
+
 // Exporting the Express app to use it in other files (like index.js)
 export { app };
