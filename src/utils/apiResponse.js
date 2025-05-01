@@ -7,3 +7,5 @@ class apiResponse {
         this.success = statusCode < 400; // If status is <400, it's a success
     }
 }
+
+export {apiResponse}; // Exporting the class for use in other files
