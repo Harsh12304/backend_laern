@@ -9,7 +9,7 @@ const storage = multer.diskStorage({
   // In this case, it's "./public/temp"
   // Think of it like a parcel counter where the file is temporarily kept
   destination: function (req, file, cb) {
-    cb(null, "./public/temp");
+    cb(null, "./public/temp"); // Temporary storage location
   },
 
   // This function determines the file name used to store the file temporarily

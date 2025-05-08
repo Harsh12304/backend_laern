@@ -34,14 +34,34 @@ const uploadOnCloudinary = async (localFilePath) => {
   } catch (error) {
     // If there’s any error during upload (e.g. internet issue or bad file), delete the local file
     // Think of it as throwing away a failed package that couldn't be delivered
-    fs.unlinkSync(localFilePath); // Deletes the file from the `temp` folder
+    if (fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath); // Safe delete
+    } else {
+      console.warn("⚠️ File already missing, cannot delete:", localFilePath);
+    }
+
+    console.error("Cloudinary upload failed:", error);
     return null;
   }
 };
+// } catch (error) {
+//   console.error("Cloudinary upload failed:", error);
+//   fs.unlinkSync(localFilePath); // optional cleanup
+//   return null;
+// }
+// }
+
 
 // Exporting this function so we can use it in other parts of our project (e.g. in route handlers)
 export { uploadOnCloudinary };
 
+/* 
+| Before                         | After                                            | Why?                                                                                |
+| ------------------------------ | ------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `fs.unlinkSync(localFilePath)` | `if (fs.existsSync(...)) { fs.unlinkSync(...) }` | Prevents trying to delete a file that doesn’t exist — which was causing your error. |
+
+
+*/
 
 // below is the code if the above don't understand below explained in more simpl way
 

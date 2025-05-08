@@ -7,7 +7,7 @@ import { apiResponse } from '../utils/apiResponse.js'; // Utility to format API 
 // Controller function to handle user registration
 const registerUser = asyncHandler(async (req, res) => {
     // Extract user details from the request body
-    const { email, fullname } = req.body;
+    const { email, fullname,username,password } = req.body;
 
     // Log the email for debugging purposes
     console.log(email);
@@ -18,7 +18,7 @@ const registerUser = asyncHandler(async (req, res) => {
     }
 
     // Check if a user with the same email or username already exists in the database
-    const existedUser = User.findOne({
+    const existedUser = await User.findOne({
         $or: [{ email }, { username }]
     });
     if (existedUser) {
@@ -27,9 +27,21 @@ const registerUser = asyncHandler(async (req, res) => {
 
     // Extract file paths for avatar and cover image from the uploaded files
     const avatarLocalPath = req.files?.avatar[0]?.path; // Path to the uploaded avatar file
-    const coverImageLocalPath = req.files?.coverImage[0]?.path; // Path to the uploaded cover image file
+    console.log("Uploaded files:", req.files);
+
+    // const coverImageLocalPath = req.files?.coverImage[0]?.path; 
+
+    let coverImageLocalPath
+
+    if (req.files && Array.isArray(req.files.coverImageLocalPath) && req.files.coverImage.length > 0) {
+        coverImageLocalPath= req.files.coverImage[0].path
+        
+    }
+
+    // Path to the uploaded cover image file
 
     // Ensure that the avatar file is provided
+
     if (!avatarLocalPath) {
         throw new apiError(400, "Avatar is required");
     }
@@ -46,7 +58,7 @@ const registerUser = asyncHandler(async (req, res) => {
     }
 
     // Create a new user in the database with the provided details
-    User.create({
+    const user = await User.create({
         fullname, // Full name of the user
         avatar: avatar.url, // URL of the uploaded avatar
         coverImage: coverImage?.url || "", // URL of the uploaded cover image (or empty string if not provided)
