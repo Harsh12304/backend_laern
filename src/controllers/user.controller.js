@@ -1,83 +1,133 @@
-import { asyncHandler } from '../utils/asyncHandler.js'; // Utility to handle async errors in route handlers
-import { apiError } from '../utils/apiError.js'; // Custom error handling class
-import { User } from '../models/user.model.js'; // User model for database operations
-import { uploadOnCloudinary } from "../utils/cloudinary.js"; // Utility to upload files to Cloudinary
-import { apiResponse } from '../utils/apiResponse.js'; // Utility to format API responses
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { apiError } from '../utils/apiError.js';
+import { User } from '../models/user.model.js';
+import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { apiResponse } from '../utils/apiResponse.js';
 
-// Controller function to handle user registration
+/**
+ * Controller function to handle user registration
+ * Processes user details and files (avatar and cover image)
+ * 
+ * IDENTIFIED BUGS:
+ * 1. There was an issue with coverImage path extraction
+ * 2. Inconsistent error handling for avatar vs. cover image
+ * 3. No verification if files were properly uploaded to temporary location
+ */
 const registerUser = asyncHandler(async (req, res) => {
-    // Extract user details from the request body
-    const { email, fullname,username,password } = req.body;
+    // Extract user details from request body
+    const { email, fullname, username, password } = req.body;
 
-    // Log the email for debugging purposes
-    console.log(email);
+    // Log data for debugging purposes
+    console.log("Registration attempt for:", email);
 
     // Validate that all required fields are provided and not empty
-    if ([email, fullname, username, password].some((field => field?.trim() === ""))) {
+    if ([email, fullname, username, password].some((field) => field?.trim() === "")) {
         throw new apiError(400, "All fields are required");
     }
 
-    // Check if a user with the same email or username already exists in the database
+    // Check if user already exists
     const existedUser = await User.findOne({
         $or: [{ email }, { username }]
     });
+    
     if (existedUser) {
         throw new apiError(409, "User with this email or username already exists");
     }
 
-    // Extract file paths for avatar and cover image from the uploaded files
-    const avatarLocalPath = req.files?.avatar[0]?.path; // Path to the uploaded avatar file
+    // DEBUGGING: Log the uploaded files object to understand its structure
     console.log("Uploaded files:", req.files);
 
-    // const coverImageLocalPath = req.files?.coverImage[0]?.path; 
-
-    let coverImageLocalPath
-
-    if (req.files && Array.isArray(req.files.coverImageLocalPath) && req.files.coverImage.length > 0) {
-        coverImageLocalPath= req.files.coverImage[0].path
-        
+    // CRITICAL BUG FIX: Extract file paths correctly
+    // Make sure we check if the arrays exist and have elements before accessing
+    let avatarLocalPath;
+    if (req.files && 
+        req.files.avatar && 
+        Array.isArray(req.files.avatar) && 
+        req.files.avatar.length > 0) {
+        avatarLocalPath = req.files.avatar[0].path;
+        console.log("Avatar local path:", avatarLocalPath);
+    } else {
+        console.log("No avatar file found in request");
     }
 
-    // Path to the uploaded cover image file
+    let coverImageLocalPath;
+    if (req.files && 
+        req.files.coverImage && 
+        Array.isArray(req.files.coverImage) && 
+        req.files.coverImage.length > 0) {
+        coverImageLocalPath = req.files.coverImage[0].path;
+        console.log("Cover image local path:", coverImageLocalPath);
+    } else {
+        console.log("No cover image file found in request");
+    }
 
-    // Ensure that the avatar file is provided
-
+    // Validate avatar is provided (required field)
     if (!avatarLocalPath) {
-        throw new apiError(400, "Avatar is required");
+        throw new apiError(400, "Avatar file is required");
     }
 
-    // Upload the avatar file to Cloudinary and get the URL
-    const avatar = await uploadOnCloudinary(avatarLocalPath);
+    // DEBUGGING: Log paths before Cloudinary upload
+    console.log("Paths before upload - Avatar:", avatarLocalPath, "Cover:", coverImageLocalPath);
 
-    // Upload the cover image file to Cloudinary (if provided) and get the URL
-    const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+    // Upload files to Cloudinary
+    // BUG FIX: Both uploads should be awaited for proper error handling
+    const avatarUpload = await uploadOnCloudinary(avatarLocalPath);
+    const coverImageUpload = coverImageLocalPath ? await uploadOnCloudinary(coverImageLocalPath) : null;
 
-    // Ensure that the avatar upload was successful
-    if (!avatar) {
-        throw new apiError(400, "Avatar is required");
+    // DEBUGGING: Log Cloudinary responses
+    console.log("Cloudinary response - Avatar:", avatarUpload?.url || "Failed", 
+              "Cover:", coverImageUpload?.url || "N/A");
+
+    // Ensure avatar upload was successful
+    if (!avatarUpload) {
+        throw new apiError(500, "Avatar upload failed, please try again");
     }
 
-    // Create a new user in the database with the provided details
+    // Create user in database
     const user = await User.create({
-        fullname, // Full name of the user
-        avatar: avatar.url, // URL of the uploaded avatar
-        coverImage: coverImage?.url || "", // URL of the uploaded cover image (or empty string if not provided)
-        email, // User's email
-        password, // User's password
-        username: username.toLowerCase(), // Convert username to lowercase for consistency
+        fullname,
+        avatar: avatarUpload.url,
+        coverImage: coverImageUpload?.url || "", // Use cover image URL if available
+        email,
+        password,
+        username: username.toLowerCase(),
     });
 
-    // Retrieve the newly created user from the database, excluding sensitive fields
+    // Retrieve user without sensitive fields
     const createdUser = await User.findById(user._id).select("-password -refreshToken");
+    
     if (!createdUser) {
         throw new apiError(500, "Something went wrong while creating user");
     }
 
-    // Return a success response with the created user data
+    // Return success response
     return res.status(201).json(
-        new apiResponse(200, createdUser, "User created successfully")
+        new apiResponse(201, createdUser, "User created successfully")
     );
 });
 
-// Export the registerUser function for use in routes
 export { registerUser };
+
+/**
+ * COMPREHENSIVE EXPLANATION OF THE BUGS AND FIXES:
+ * 
+ * 1. COVER IMAGE PATH EXTRACTION:
+ *    - Original code had a typo in property name for coverImageLocalPath
+ *    - It was incorrectly checking req.files.coverImageLocalPath instead of req.files.coverImage
+ * 
+ * 2. FILE EXISTENCE CHECKS:
+ *    - Added proper validation of req.files structure before accessing properties
+ *    - Ensured all array checks are in place to prevent "cannot read property of undefined" errors
+ * 
+ * 3. IMPROVED ERROR HANDLING:
+ *    - Added validation after Cloudinary upload to ensure avatar was uploaded successfully
+ *    - Added more logging to track the flow of file handling
+ * 
+ * 4. CONSISTENT HTTP STATUS CODES:
+ *    - Using 201 for successful creation consistently in both the status and apiResponse
+ * 
+ * These fixes ensure that:
+ * - Both avatar and cover image files are properly extracted from the request
+ * - Both files are uploaded to Cloudinary with proper error handling
+ * - The temporary files should be deleted by the updated uploadOnCloudinary function
+ */

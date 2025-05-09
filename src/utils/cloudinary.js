@@ -1,94 +1,109 @@
-// Importing Cloudinary's version 2 SDK — it's a popular service to upload images, videos, or files to the cloud (i.e., internet storage).
+// Importing Cloudinary's version 2 SDK for file uploads
 import { v2 as cloudinary } from "cloudinary";
 
-// This is Node's built-in File System module, which helps us interact with files on our local machine
+// Node's built-in File System module for file operations
 import fs from "fs";
 
-// Configuring the cloudinary SDK with our credentials stored in a secret `.env` file
-// Think of it like logging into your Cloudinary account so that the SDK knows which account to upload to.
+// Configure Cloudinary with credentials from environment variables
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,  // Your cloud name (like your Cloudinary username)
-  api_key: process.env.CLOUDINARY_API_KEY,        // Public API key
-  api_secret: process.env.CLOUDINARY_API_SECRET,  // Secret key (used to verify you're the account owner)
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// This function is responsible for uploading a file to Cloudinary.
-// It accepts one input: the local file path of the image or video that has been temporarily stored on your server.
+/**
+ * Uploads a file to Cloudinary and removes the local temporary file afterward
+ * 
+ * @param {string} localFilePath - Path to the temporary file on server
+ * @returns {object|null} - Cloudinary response object or null if upload fails
+ * 
+ * PREVIOUS BUG: The function wasn't deleting local files after successful uploads,
+ * only attempting deletion in the error handler. This caused temporary files to 
+ * accumulate in the public/temp directory.
+ */
 const uploadOnCloudinary = async (localFilePath) => {
   try {
-    // Check: If no file path is provided, exit and return null.
-    if (!localFilePath) return null;
-
-    // Uploading file to Cloudinary.
-    // This is like going to a courier office and saying:
-    // "Here’s my package (file). Upload it to the cloud for me."
-    const response = await cloudinary.uploader.upload(localFilePath, {
-      resource_type: "auto", // This automatically detects whether it's an image, video, or something else
-    });
-
-    // If the file is uploaded successfully, log the secure Cloudinary URL in the console
-    // This URL can now be stored in the database or returned to the frontend
-    console.log("file is been uploaded on cloudinary", response.url);
-    return response;
-
-  } catch (error) {
-    // If there’s any error during upload (e.g. internet issue or bad file), delete the local file
-    // Think of it as throwing away a failed package that couldn't be delivered
-    if (fs.existsSync(localFilePath)) {
-      fs.unlinkSync(localFilePath); // Safe delete
-    } else {
-      console.warn("⚠️ File already missing, cannot delete:", localFilePath);
+    // Exit early if no file path is provided
+    if (!localFilePath) {
+      console.log("No file path provided for upload");
+      return null;
     }
 
-    console.error("Cloudinary upload failed:", error);
+    // DEBUGGING: Log the file path to ensure it's correct
+    console.log("Attempting to upload file:", localFilePath);
+
+    // Check if the file actually exists before trying to upload
+    // BUG FIX: Added this check to prevent errors when file doesn't exist
+    if (!fs.existsSync(localFilePath)) {
+      console.warn("⚠️ File doesn't exist, cannot upload:", localFilePath);
+      return null;
+    }
+
+    // Upload the file to Cloudinary
+    const response = await cloudinary.uploader.upload(localFilePath, {
+      resource_type: "auto", // Auto-detect whether it's an image, video, etc.
+    });
+
+    console.log("✅ File successfully uploaded to Cloudinary:", response.url);
+    
+    // CRITICAL BUG FIX: Delete the local file after successful upload
+    // This was missing in the original code, causing files to remain in temp directory
+    try {
+      // Double-check file exists before deletion (defensive programming)
+      if (fs.existsSync(localFilePath)) {
+        fs.unlinkSync(localFilePath);
+        console.log("🗑️ Local file deleted after successful upload:", localFilePath);
+      } else {
+        console.warn("⚠️ Strange: File existed for upload but not for deletion:", localFilePath);
+      }
+    } catch (deleteError) {
+      // Handle deletion errors separately to not affect the main upload flow
+      console.error("❌ Error deleting local file after successful upload:", deleteError);
+      // We don't return null here as the upload was still successful
+    }
+    
+    return response;
+
+  } catch (uploadError) {
+    console.error("❌ Cloudinary upload failed:", uploadError);
+    
+    // Clean up the local file if upload fails
+    try {
+      if (fs.existsSync(localFilePath)) {
+        fs.unlinkSync(localFilePath);
+        console.log("🗑️ Local file deleted after upload failure:", localFilePath);
+      } else {
+        console.warn("⚠️ File already missing, cannot delete:", localFilePath);
+      }
+    } catch (deleteError) {
+      console.error("❌ Error deleting local file after failed upload:", deleteError);
+    }
+    
     return null;
   }
 };
-// } catch (error) {
-//   console.error("Cloudinary upload failed:", error);
-//   fs.unlinkSync(localFilePath); // optional cleanup
-//   return null;
-// }
-// }
 
-
-// Exporting this function so we can use it in other parts of our project (e.g. in route handlers)
 export { uploadOnCloudinary };
 
-/* 
-| Before                         | After                                            | Why?                                                                                |
-| ------------------------------ | ------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| `fs.unlinkSync(localFilePath)` | `if (fs.existsSync(...)) { fs.unlinkSync(...) }` | Prevents trying to delete a file that doesn’t exist — which was causing your error. |
-
-
-*/
-
-// below is the code if the above don't understand below explained in more simpl way
-
-
-// import multer from "multer"
-
-// const storage = multer.diskStorage({
-//     destination: function (req, file, cb) {
-//       cb(null, "./public/temp" )
-//     },
-//     filename: function (req, file, cb) {
-
-//         // not needed becoz it is used to add our customize name to store the file name
-//         //  Eg.logo-harsh.png like we use third party website to compress or resize the image and
-//         //  after downloading we get our file name then website name then the image type 👇
-
-//      /* const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9) 
-//       cb(null, file.fieldname + '-' + uniqueSuffix)*/ 
-
-
-//       //it is not good to take originalname because the possibility is there will be 5 file of same name
-//       //  with different extensions but here we are using because 
-//       // it will be there for few moment after that we will upload it in cloudinary 👇
-//       cb(null, file.originalname) 
-//     }
-//   })
-  
-//   export const upload = multer({ 
-//     storage, 
-// })
+/**
+ * COMPREHENSIVE EXPLANATION OF THE BUGS AND FIXES:
+ * 
+ * 1. MAIN BUG: The original code only attempted to delete files in the error handler,
+ *    not after successful uploads. This caused files to accumulate in the temp directory.
+ * 
+ * 2. POTENTIAL ISSUES WITH AVATAR VS COVER IMAGE:
+ *    - If only cover images were being deleted but not avatars, this could be because:
+ *      a) There might be path discrepancies between how avatar and cover image paths are constructed
+ *      b) The avatar upload might be happening in a different flow or callback
+ *      c) File permission issues for specific file types
+ * 
+ * 3. ERROR HANDLING IMPROVEMENTS:
+ *    - Added separate try/catch blocks for deletion to prevent deletion errors from affecting upload results
+ *    - Added more logging to trace exactly what's happening with each file
+ *    - Added existence checks before all file operations to prevent errors
+ * 
+ * 4. CODE ROBUSTNESS:
+ *    - Better logging to make debugging easier
+ *    - More defensive programming with existence checks
+ *    - Separation of concerns between upload and cleanup operations
+ */
